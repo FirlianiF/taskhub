@@ -1,0 +1,4 @@
+# Store text files with LF and check them out with LF on every OS.
+* text=auto eol=lf
+
+*.db binary

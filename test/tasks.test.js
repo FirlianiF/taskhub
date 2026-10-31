@@ -4,6 +4,7 @@ const request = require('supertest');
 const { openDb } = require('../src/db');
 const { createApp } = require('../src/app');
 const { createApiKey, hashKey } = require('../src/keys');
+const { createLogger } = require('../src/log');
 
 let db;
 let app;
@@ -14,7 +15,7 @@ beforeEach(() => {
   db = openDb(':memory:');
   keyA = createApiKey(db, 'tenant-a');
   keyB = createApiKey(db, 'tenant-b');
-  app = createApp(db);
+  app = createApp(db, { log: createLogger(() => {}) });
 });
 
 const auth = (key) => ({ Authorization: `Bearer ${key}` });

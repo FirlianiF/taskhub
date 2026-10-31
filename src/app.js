@@ -64,6 +64,11 @@ function createApp(db, { log = createLogger() } = {}) {
   const listTasks = db.prepare(
     'SELECT id, title, done FROM tasks WHERE tenant_id = ? ORDER BY id'
   );
+  // A NULL argument leaves that column unchanged.
+  const updateTask = db.prepare(
+    `UPDATE tasks SET title = COALESCE(?, title), done = COALESCE(?, done)
+     WHERE id = ? AND tenant_id = ? RETURNING id, title, done`
+  );
 
   app.post('/tasks', (req, res) => {
     const { title, done = false } = req.body ?? {};
@@ -79,6 +84,33 @@ function createApp(db, { log = createLogger() } = {}) {
 
   app.get('/tasks', (req, res) => {
     res.json(listTasks.all(req.tenantId).map(toTask));
+  });
+
+  // Another tenant's task gets the same 404 as a missing one.
+  app.patch('/tasks/:id', (req, res) => {
+    if (!/^[1-9]\d*$/.test(req.params.id)) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    const { title, done } = req.body ?? {};
+    if (title === undefined && done === undefined) {
+      return res.status(400).json({ error: 'title or done is required' });
+    }
+    if (title !== undefined && (typeof title !== 'string' || title.trim() === '')) {
+      return res.status(400).json({ error: 'title must be a non-empty string' });
+    }
+    if (done !== undefined && typeof done !== 'boolean') {
+      return res.status(400).json({ error: 'done must be a boolean' });
+    }
+    const row = updateTask.get(
+      title === undefined ? null : title.trim(),
+      done === undefined ? null : done ? 1 : 0,
+      Number(req.params.id),
+      req.tenantId
+    );
+    if (!row) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+    res.json(toTask(row));
   });
 
   // Client errors (e.g. malformed JSON) keep their status; anything else is

@@ -121,3 +121,67 @@ test('multiple keys for the same tenant see the same tasks', async () => {
   const res = await request(app).get('/tasks').set(auth(keyA2)).expect(200);
   assert.deepEqual(res.body.map((t) => t.title), ['Shared']);
 });
+
+test('PATCH /tasks/:id updates title and/or done', async () => {
+  const agent = request(app);
+  const { body: task } = await agent.post('/tasks').set(auth(keyA)).send({ title: 'Draft' }).expect(201);
+
+  const r1 = await agent.patch(`/tasks/${task.id}`).set(auth(keyA)).send({ done: true }).expect(200);
+  assert.deepEqual(r1.body, { id: task.id, title: 'Draft', done: true });
+
+  const r2 = await agent.patch(`/tasks/${task.id}`).set(auth(keyA)).send({ title: '  Final  ' }).expect(200);
+  assert.deepEqual(r2.body, { id: task.id, title: 'Final', done: true });
+
+  const r3 = await agent
+    .patch(`/tasks/${task.id}`)
+    .set(auth(keyA))
+    .send({ title: 'Reopened', done: false })
+    .expect(200);
+  assert.deepEqual(r3.body, { id: task.id, title: 'Reopened', done: false });
+
+  const list = await agent.get('/tasks').set(auth(keyA)).expect(200);
+  assert.deepEqual(list.body, [{ id: task.id, title: 'Reopened', done: false }]);
+});
+
+test('PATCH /tasks/:id validates the body', async () => {
+  const { body: task } = await request(app).post('/tasks').set(auth(keyA)).send({ title: 'Keep' }).expect(201);
+  const patch = (body) => request(app).patch(`/tasks/${task.id}`).set(auth(keyA)).send(body);
+
+  await patch({}).expect(400);
+  await patch({ title: '' }).expect(400);
+  await patch({ title: '   ' }).expect(400);
+  await patch({ title: 42 }).expect(400);
+  await patch({ title: null }).expect(400);
+  await patch({ done: 'yes' }).expect(400);
+  await patch({ done: null }).expect(400);
+  await patch({ title: 'ok', done: 1 }).expect(400);
+
+  const list = await request(app).get('/tasks').set(auth(keyA)).expect(200);
+  assert.deepEqual(list.body, [{ id: task.id, title: 'Keep', done: false }]);
+});
+
+test('PATCH /tasks/:id returns 404 for a missing task', async () => {
+  await request(app).patch('/tasks/999').set(auth(keyA)).send({ done: true }).expect(404);
+  await request(app).patch('/tasks/abc').set(auth(keyA)).send({ done: true }).expect(404);
+});
+
+test('PATCH /tasks/:id requires an API key', async () => {
+  await request(app).patch('/tasks/1').send({ done: true }).expect(401);
+});
+
+test('tenant B cannot patch tenant A\'s task', async () => {
+  const agent = request(app);
+  const { body: task } = await agent.post('/tasks').set(auth(keyA)).send({ title: 'A task' }).expect(201);
+
+  await agent
+    .patch(`/tasks/${task.id}`)
+    .set(auth(keyB))
+    .send({ title: 'Hijacked', done: true })
+    .expect(404);
+
+  const a = await agent.get('/tasks').set(auth(keyA)).expect(200);
+  assert.deepEqual(a.body, [{ id: task.id, title: 'A task', done: false }]);
+
+  const b = await agent.get('/tasks').set(auth(keyB)).expect(200);
+  assert.deepEqual(b.body, []);
+});

@@ -1,0 +1,21 @@
+{
+  "name": "taskhub",
+  "version": "1.0.0",
+  "description": "Multi-tenant task API",
+  "main": "src/server.js",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
+  }
+}
